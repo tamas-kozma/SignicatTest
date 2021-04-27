@@ -54,6 +54,15 @@
   <ItemGroup>
     <Content Include="babel.config.js" />
   </ItemGroup>
+  <ItemGroup>
+    <TypeScriptCompile Include="src\BackendClient.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+    <TypeScriptCompile Include="src\BackendDataModel.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+    <TypeScriptCompile Include="src\Config.ts" />
+  </ItemGroup>
   <Import Project="$(VSToolsPath)\Node.js Tools\Microsoft.NodejsToolsV2.targets" />
   <ProjectExtensions>
     <VisualStudio>

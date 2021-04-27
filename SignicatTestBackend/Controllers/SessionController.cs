@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -17,6 +18,7 @@ namespace SignicatTestBackend.Controllers
     public class SessionController : ControllerBase
     {
         private const string ContentTypeJson = "application/json";
+        private const string SessionIdCookieName = "SignicatSessionId";
 
         private readonly HttpClient httpClient;
         private readonly IConfiguration configuration;
@@ -42,14 +44,52 @@ namespace SignicatTestBackend.Controllers
                 {
                     string responseContentString = await response.Content.ReadAsStringAsync();
                     sessionData = JsonConvert.DeserializeObject<SessionData>(responseContentString);
+
+                    var cookieOptions = new CookieOptions
+                    {
+                        Expires = DateTimeOffset.Now.AddMinutes(5),
+                        HttpOnly = true,
+                        Secure = true
+                    };
+                    Response.Cookies.Append(SessionIdCookieName, sessionData.Id, cookieOptions);
                     return Redirect(sessionData.Url);
                 }
             }
         }
 
+        [HttpPost("logout")]
+        public ActionResult Logout()
+        {
+            Response.Cookies.Append(SessionIdCookieName, "");
+            return Ok();
+        }
+
+        [HttpGet("info")]
         public async Task<ActionResult> GetUserInfo()
         {
-            throw new NotImplementedException();
+            if (!Request.Cookies.TryGetValue(SessionIdCookieName, out string sessionId))
+            {
+                return StatusCode(403);
+            }
+
+            string clientToken = await GetToken();
+            string sessionInfoUrlTemplate = configuration.GetValue<string>("SignicatClient:SessionInfoUrlTemplate");
+            string sessionInfoUrl = sessionInfoUrlTemplate.Replace("{id}", sessionId);
+            using (var request = new HttpRequestMessage(HttpMethod.Get, sessionInfoUrl))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", clientToken);
+                using (var response = await httpClient.SendAsync(request))
+                {
+                    string responseContentString = await response.Content.ReadAsStringAsync();
+                    var sessionData = JsonConvert.DeserializeObject<SessionData>(responseContentString);
+                    if (sessionData.Status != "success" || sessionData.Identity == null)
+                    {
+                        return StatusCode(403);
+                    }
+
+                    return Content(JsonConvert.SerializeObject(sessionData.Identity), ContentTypeJson);
+                }
+            }
         }
 
         private async Task<string> GetToken()
@@ -85,16 +125,17 @@ namespace SignicatTestBackend.Controllers
             var sessionData = new SessionData()
             {
                 Language = "no",
-                Flow = "iframe"
+                Flow = "redirect"
             };
             sessionData.AllowedProviders.Add("no_bankid_netcentric");
             sessionData.Include.Add("name");
             sessionData.Include.Add("date_of_birth");
-            sessionData.IframeSettings = new SessionDataIframeSettings()
+            sessionData.RedirectSettings = new  SessionDataRedirectSettings
             {
-                PostMessageTargetOrigin = frontendUrl,
+                SuccessUrl = frontendUrl,
+                AbortUrl = frontendUrl,
+                ErrorUrl = frontendUrl
             };
-            sessionData.IframeSettings.ParentDomains.Add(frontendUrl);
             return sessionData;
         }
 
@@ -120,6 +161,16 @@ namespace SignicatTestBackend.Controllers
             public List<string> ParentDomains { get; } = new List<string>();
             [JsonProperty("postMessageTargetOrigin")]
             public string PostMessageTargetOrigin { get; set; }
+        }
+
+        private class SessionDataRedirectSettings
+        {
+            [JsonProperty("successUrl")]
+            public string SuccessUrl { get; set; }
+            [JsonProperty("abortUrl")]
+            public string AbortUrl { get; set; }
+            [JsonProperty("errorUrl")]
+            public string ErrorUrl { get; set; }
         }
 
         private class SessionDataIdentity
@@ -149,6 +200,8 @@ namespace SignicatTestBackend.Controllers
             public List<string> Include { get; } = new List<string>();
             [JsonProperty("iframeSettings")]
             public SessionDataIframeSettings IframeSettings { get; set; }
+            [JsonProperty("redirectSettings")]
+            public SessionDataRedirectSettings RedirectSettings { get; set; }
 
             // Created properties
             [JsonProperty("id")]

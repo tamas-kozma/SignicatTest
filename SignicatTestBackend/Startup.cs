@@ -25,6 +25,7 @@ namespace SignicatTestBackend
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddCors();
             services.AddSingleton<HttpClient>(new HttpClient());
             services.AddControllers();
         }
@@ -35,6 +36,12 @@ namespace SignicatTestBackend
             {
                 app.UseDeveloperExceptionPage();
             }
+
+            app.UseCors(options => options
+                .WithOrigins("http://dev.local:8080")
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials());
 
             app.UseHttpsRedirection();
 
